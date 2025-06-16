@@ -24,14 +24,14 @@
       </ion-grid>
 
       <!-- Priority Distribution Chart -->
-      <ion-card>
+      <!-- <ion-card>
         <ion-card-header>Priority Distribution</ion-card-header>
         <ion-card-content class="text-center">
           <p>Click on a bar to view tickets of that priority.</p>
           <p v-if="!tickets.length">Loading chart...</p>
           <canvas id="priority-chart"></canvas>
         </ion-card-content>
-      </ion-card>
+      </ion-card> -->
 
       <!-- Quick Filters Section -->
       <!-- <ion-grid>

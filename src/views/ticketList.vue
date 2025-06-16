@@ -26,9 +26,14 @@
         </ion-segment>
       </ion-toolbar>
 
-      <!-- Sorting Dropdown -->
+      <!-- Search and Sorting Dropdown -->
       <ion-toolbar>
-        <ion-label slot="start" class="ion-padding-start">Sort by:</ion-label>
+        <ion-searchbar
+          v-model="searchQuery"
+          placeholder="Search tickets..."
+          debounce="300"
+          show-clear-button="focus"
+        ></ion-searchbar>
         <ion-select v-model="selectedSort" slot="end" interface="popover">
           <ion-select-option value="newest">Newest First</ion-select-option>
           <ion-select-option value="oldest">Oldest First</ion-select-option>
@@ -101,91 +106,8 @@
 
 
 
-      <!-- Ticket Modal -->
-      <ion-modal :is-open="modalOpen" @didDismiss="closeModal">
-        <ion-header>
-          <ion-toolbar>
-            <ion-title>{{ selectedTicket?.subject }}</ion-title>
-            <ion-buttons slot="end">
-              <ion-button @click="closeModal">Close</ion-button>
-            </ion-buttons>
-          </ion-toolbar>
-        </ion-header>
-        <ion-content>
-          <div v-if="selectedTicket">
-            <p><strong>Description:</strong></p>
-            <p>{{ selectedTicket.description_text || 'No description.' }}</p>
-            <p v-if="selectedTicket?.custom_fields?.cf_lms_instance">
-              <strong>Instance:</strong> {{ selectedTicket.custom_fields.cf_lms_instance }}
-            </p>
-            <div v-if="selectedTicket.attachments?.length">
-              <p><strong>Attachments:</strong></p>
-              <div v-for="file in selectedTicket.attachments" :key="file.id">
-                <div v-if="file.content_type.startsWith('image/')">
-                  <img :src="file.attachment_url" class="image-preview" />
-                </div>
-                <div v-else>
-                  <ion-button expand="block" @click="downloadFile(file.attachment_url)">
-                    Download {{ file.name }}
-                  </ion-button>
-                </div>
-              </div>
-            </div>
-
-            <ion-item>
-              <ion-label position="stacked">Reply</ion-label>
-              <ion-textarea v-model="replyText" placeholder="Type your reply here..."></ion-textarea>
-            </ion-item>
-            <ion-button expand="block" color="success" @click="sendReply">Send Reply</ion-button>
-          </div>
-
-          <!-- Conversation History -->
-          <div v-if="conversations.length">
-            <h3 class="section-title">Conversation History</h3>
-            <ion-grid>
-              <ion-row class="header-row">
-                <ion-col size="2"><strong>Source</strong></ion-col>
-                <ion-col size="6"><strong>Response</strong></ion-col>
-                <ion-col size="2"><strong>Author</strong></ion-col>
-                <ion-col size="2"><strong>Date</strong></ion-col>
-              </ion-row>
-              <ion-row
-                v-for="conv in conversations"
-                :key="conv.id"
-                class="conversation-row"
-              >
-                <ion-col size="2">{{ sourceLabel(conv.source) }}</ion-col>
-                <ion-col size="6">
-                  <div class="scroll-box">
-                    {{ conv.body_text || '—' }}
-                    <template v-if="conv.attachments?.length">
-                      <div v-for="file in conv.attachments" :key="file.id">
-                        <div v-if="file.content_type.startsWith('image/')">
-                          <img :src="file.attachment_url" class="image-preview-small" />
-                        </div>
-                        <div v-else>
-                          <ion-button
-                            size="small"
-                            @click.stop="downloadFile(file.attachment_url)"
-                          >
-                            {{ file.name }}
-                          </ion-button>
-                        </div>
-                      </div>
-                    </template>
-                  </div>
-                </ion-col>
-                <ion-col size="2">{{ conv.user_id || 'System' }}</ion-col>
-                <ion-col size="2">{{ formatDate(conv.created_at) }}</ion-col>
-              </ion-row>
-            </ion-grid>
-          </div>
-        </ion-content>
-      </ion-modal>
-
-      <!-- Export Modal -->
-      <ion-modal :is-open="exportModalOpen" @didDismiss="exportModalOpen = false" :icon="downloadOutline">
-        <ion-icon :icon="downloadOutline"></ion-icon>
+<!-- Export Modal -->
+<ion-modal :is-open="exportModalOpen" @didDismiss="exportModalOpen = false" :icon="downloadOutline">
   <ion-header>
     <ion-toolbar>
       <ion-title>Export Tickets</ion-title>
@@ -196,19 +118,31 @@
   </ion-header>
   <ion-content>
     <ion-list>
-      <ion-item v-for="option in exportOptions" :key="option.key">
-        <ion-checkbox slot="start" v-model="selectedExportOptions" :value="option.key"></ion-checkbox>
-        <ion-label>{{ option.label }}</ion-label>
-      </ion-item>
+      <ion-select v-model="selectedExportOptions" multiple placeholder="Select export options">
+        <ion-select-option
+          v-for="option in exportOptions"
+          :key="option.key"
+          :value="option.key"
+        >
+          {{ option.label }}
+        </ion-select-option>
+      </ion-select>
     </ion-list>
-      <ion-item>
-  <ion-label>File Type</ion-label>
-  <ion-select v-model="exportFileType">
-    <ion-select-option value="docx">DOCX</ion-select-option>
-    <ion-select-option value="csv">CSV</ion-select-option>
-  </ion-select>
-</ion-item>
-
+    <ion-item>
+      <ion-label>File Type</ion-label>
+      <ion-select v-model="exportFileType">
+        <ion-select-option value="docx">DOCX</ion-select-option>
+        <ion-select-option value="csv">CSV</ion-select-option>
+      </ion-select>
+    </ion-item>
+    <ion-list>
+      <ion-label>Export Fields</ion-label>
+      <ion-select v-model="selectedExportFields" multiple placeholder="Select fields to export">
+        <ion-select-option v-for="field in exportFields" :key="field.key" :value="field.key">
+          {{ field.label }}
+        </ion-select-option>
+      </ion-select>
+    </ion-list>
     <ion-button expand="block" color="success" @click="handleExport">
       Download Selected Tickets
     </ion-button>
@@ -222,7 +156,7 @@
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonCard, IonCardHeader, IonCardTitle, IonCardContent,
   IonBadge, IonRefresher, IonRefresherContent, IonSegment, IonSegmentButton, IonLabel, IonModal,
-  IonButtons, IonButton, IonItem, IonTextarea, IonSelect, IonSelectOption, IonText, IonGrid, IonRow, IonCol, IonIcon
+  IonButtons, IonButton, IonItem, IonSelect, IonSelectOption, IonText, IonIcon
 } from '@ionic/vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
@@ -264,7 +198,6 @@ const statusFilter = ref<'all' | 'open' | 'overdue' | 'due_today'>('all')
 const selectedSort = ref<'newest' | 'oldest'>('newest')
 const modalOpen = ref(false)
 const selectedTicket = ref<Ticket | null>(null)
-const replyText = ref('')
 const exportModalOpen = ref(false)
 const exportFileType = ref<'csv' | 'docx'>('csv')
 
@@ -281,11 +214,28 @@ const exportOptions = [
 
 const selectedExportOptions = ref<string[]>([])
 
+const searchQuery = ref('')
+
+const exportFields = [
+  { label: 'ID', key: 'id' },
+  { label: 'Subject', key: 'subject' },
+  { label: 'Status', key: 'status' },
+  { label: 'Priority', key: 'priority' },
+  { label: 'Due Date', key: 'due_by' },
+  { label: 'Type', key: 'type' },
+  { label: 'Instance', key: 'instance' },
+  { label: 'Created Time', key: 'created_at' },
+  { label: 'Resolved Time', key: 'resolved_at' },
+  { label: 'Last Update Time', key: 'updated_at' }
+]
+const selectedExportFields = ref(exportFields.map(f => f.key))
+
 const escapeCSV = (text: string) => `"${text.replace(/"/g, '""')}"`
 
 const handleExport = async () => {
   const today = new Date().toISOString().split('T')[0]
   const selected = selectedExportOptions.value
+  // Removed unused 'fieldsToExport' assignment
 
   if (!selected.length) {
     alert("Please select at least one export option.")
@@ -313,7 +263,7 @@ const handleExport = async () => {
       selected.includes('due_today') && due === today
     ].some(Boolean)
 
-    const hasCategoryFilter = ['lms', 'non-lms', 'untagged', 'instance'].some(f => selected.includes(f))
+    const hasCategoryFilter = ['lms', 'non-lms', 'untagged', 'instances'].some(f => selected.includes(f))
     const hasStatusFilter = ['open', 'overdue', 'due_today'].some(f => selected.includes(f))
 
     if (hasCategoryFilter && hasStatusFilter) {
@@ -426,28 +376,37 @@ onMounted(async () => {
 
 const filteredTickets = computed(() => {
   const today = new Date().toISOString().split('T')[0]
-  
   return tickets.value.filter(ticket => {
-    // Cache field lookups
     const fields = ticket.custom_fields
     const lms = fields?.cf_district
     const nonLms = fields?.cf_non_lms
     const instance = fields?.cf_lms_instance
     const due = ticket.due_by?.split('T')[0]
 
+    // Category filters
     if (filter.value === 'lms') return !!lms
     if (filter.value === 'non-lms') return !!nonLms
     if (filter.value === 'untagged') return !lms && !nonLms
     if (filter.value === 'instances') return !!instance
 
+    // Status filters
     if (statusFilter.value === 'open') return ticket.status === 2
     if (statusFilter.value === 'overdue') return due && due < today
     if (statusFilter.value === 'due_today') return due === today
 
+    // Search filter
+    if (searchQuery.value) {
+      const q = searchQuery.value.toLowerCase()
+      const subject = ticket.subject?.toLowerCase() || ''
+      const id = String(ticket.id)
+      const type = ticket.type?.toLowerCase() || ''
+      const instanceStr = ticket.custom_fields?.cf_lms_instance?.toLowerCase() || ''
+      if (![subject, id, type, instanceStr].some(field => field.includes(q))) return false
+    }
+
     return true
   })
 })
-
 
 const filteredTicketsSorted = computed(() => {
   return [...filteredTickets.value].sort((a, b) => {
@@ -478,33 +437,7 @@ const openTicket = async (ticket: Ticket) => {
   }
 }
 
-const sendReply = async () => {
-  if (!selectedTicket.value || !replyText.value.trim()) return
-  
-  try {
-    await axios.post(
-      `https://${import.meta.env.VITE_FRESHDESK_DOMAIN}/api/v2/tickets/${selectedTicket.value.id}/reply`,
-      { body: replyText.value.trim() },
-      {
-        headers: {
-          Authorization: `Basic ${btoa(import.meta.env.VITE_FRESHDESK_API_KEY + ':X')}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    )
-    alert('Reply sent!')
-    replyText.value = ''
-  } catch (error) {
-    console.error('Failed to send reply:', error)
-    alert('Failed to send reply. Please try again.')
-  }
-}
 
-const closeModal = () => {
-  modalOpen.value = false
-  conversations.value = []
-  selectedTicket.value = null
-}
 
 const getPriority = (val: number) => ['Low', 'Medium', 'High', 'Urgent'][val - 1] || 'Unknown'
 const getPriorityBadgeStyle = (val: number) => ({
@@ -515,10 +448,6 @@ const getStatus = (val: number) => ({
   2: 'Open', 3: 'Pending', 4: 'Resolved', 5: 'Closed', 6: 'Waiting on Customer', 7: 'Waiting on Third Party'
 })[val] || 'Unknown'
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString()
-const sourceLabel = (val: number) => ({
-  0: 'Reply', 2: 'Note', 5: 'Tweet', 6: 'Survey', 7: 'Facebook', 8: 'Email', 9: 'Phone', 11: 'E-Com'
-}[val] || `Source ${val}`)
-const downloadFile = (url: string) => window.open(url, '_blank')
 
 </script>
 
