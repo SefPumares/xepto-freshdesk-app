@@ -1,0 +1,7 @@
+{
+  "name": "xepto-freshdesk-app",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "vue-vite"
+}
